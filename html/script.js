@@ -12,9 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Local NUI cache for internet related data
     const Internet = {
-        PlayerSubscriptions: {}, // { property_id: { details }}
-        PendingInstallations: {}, // { property_id: { details }}
-        HubsState: {} // { hub_id: { details }}
+        PlayerSubscriptions: {}, // { property_id: { citizenid, property_id, provider, speed_tier, is_active, last_payment } }
+        PendingInstallations: {}, // { property_id: { ticket_id, type, property_id, citizenid, description, status, speed_tier? } }
+        HubsState: {} // { hub_id: { label, isDown, currentConnections, maxConnections, ... } }
     };
     window.cachedConfigData = { Internet: { ServiceTiers: {} } }; // Cache relevant config
 
@@ -66,8 +66,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.cachedConfigData.Internet.ServiceTiers = payload.config.Internet.ServiceTiers;
                 }
                 Internet.HubsState = payload.internet?.hubs || {};
-                Internet.PlayerSubscriptions = payload.internet?.subscriptions || {}; // Server should send { property_id: subData }
-                Internet.PendingInstallations = payload.internet?.pendingInstallations || {}; // Server should send { property_id: ticketData }
+                Internet.PlayerSubscriptions = payload.internet?.subscriptions || {};
+                Internet.PendingInstallations = payload.internet?.pendingInstallations || {};
                 updateAllModules(payload);
                 checkAdminPermissions(payload.isAdmin);
             } else if (dataType === 'power_status') {
@@ -76,20 +76,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateWaterModule(payload);
             } else if (dataType === 'water_leak_update') {
                 updateWaterLeakStatus(payload);
-            } else if (dataType === 'internet_status') { // Full update of hubs + potentially a user's primary service
+            } else if (dataType === 'internet_status') {
                 if (payload.hubs) {
                     Internet.HubsState = payload.hubs;
                     updateInternetModule(payload.hubs);
                 }
-                // If payload.userService is sent with general internet_status, update relevant property
-                // This is usually for the player's *current context* if not property specific list is available
                 if (payload.userService && payload.userService.property_id) {
-                    Internet.PlayerSubscriptions[payload.userService.property_id] = payload.userService; // Update cache
+                    Internet.PlayerSubscriptions[payload.userService.property_id] = payload.userService;
                     updateUserSpecificInternetService(payload.userService, payload.userService.property_id);
                 } else if (payload.userService) {
-                     console.log("General userService update (no specific propertyId, or for a non-listed context):", payload.userService);
+                     console.log("General userService update (no propertyId, or for a non-listed context):", payload.userService);
                 }
-                 // Update all property displays as hub status might affect them all
                 if (payload.hubs && document.getElementById('user-internet-services-list')) {
                      const currentProps = Array.from(document.querySelectorAll('.property-internet-card')).map(el => ({
                         property_id: el.id.replace('property-', ''),
@@ -98,38 +95,35 @@ document.addEventListener('DOMContentLoaded', () => {
                     }));
                     updateUserPropertiesInternetDisplay(currentProps, window.cachedConfigData.Internet.ServiceTiers);
                 }
-            } else if (dataType === 'internet_hub_status') { // Update for a single or multiple hubs
+            } else if (dataType === 'internet_hub_status') {
                 for(const hubId in payload){
                     Internet.HubsState[hubId] = {...(Internet.HubsState[hubId] || {}), ...payload[hubId]};
                 }
                 updateInternetModule(payload);
-                 // Update all property displays as hub status might affect them all
                  const currentProps = Array.from(document.querySelectorAll('.property-internet-card')).map(el => ({
                     property_id: el.id.replace('property-', ''),
                     label: el.querySelector('h4')?.textContent || el.id.replace('property-', ''),
                     address: el.querySelector('p.text-xs.text-gray-400')?.textContent || ''
                 }));
                 updateUserPropertiesInternetDisplay(currentProps, window.cachedConfigData.Internet.ServiceTiers);
-            } else if (dataType === 'internet_user_service') { // Update for a specific property of the user
-                // payload: { property_id, citizenid, provider, speed_tier, is_active, last_payment }
+            } else if (dataType === 'internet_user_service') {
                 if (payload && payload.property_id) {
-                    Internet.PlayerSubscriptions[payload.property_id] = payload; // Update cache
-                    if (payload.is_active && Internet.PendingInstallations[payload.property_id]) { // If just activated, remove from pending
+                    Internet.PlayerSubscriptions[payload.property_id] = payload;
+                    if (payload.is_active && Internet.PendingInstallations[payload.property_id]) {
                         delete Internet.PendingInstallations[payload.property_id];
                     }
                     updateUserSpecificInternetService(payload, payload.property_id);
                 }
-            } else if (dataType === 'internet_pending_install_update') { // New or updated pending install
-                if(payload && payload.property_id) { // payload should be the ticket object
+            } else if (dataType === 'internet_pending_install_update') {
+                if(payload && payload.property_id) {
                     Internet.PendingInstallations[payload.property_id] = payload;
-                    // Re-render the specific property card to show pending status
-                    updateUserSpecificInternetService(null, payload.property_id); // Pass null for serviceData to trigger re-render based on pending
+                    updateUserSpecificInternetService(null, payload.property_id);
                 }
-            } else if (dataType === 'trash_status') { // Full update
+            } else if (dataType === 'trash_status') {
                 updateTrashModule(payload);
-            } else if (dataType === 'trash_bin_status') { // Single bin update
+            } else if (dataType === 'trash_bin_status') {
                 updateTrashBinDisplay(payload);
-            } else if (dataType === 'trash_illegal_dump_update') { // Single dump site update
+            } else if (dataType === 'trash_illegal_dump_update') {
                 updateIllegalDumpDisplay(payload);
             } else if (dataType === 'admin_status_update') {
                 checkAdminPermissions(payload.isAdmin);
@@ -150,15 +144,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.water) updateWaterModule(data.water);
         if (data.internet?.hubs) updateInternetModule(data.internet.hubs);
 
-        if (data.config) { // Populate admin dropdowns and cache service tiers
+        if (data.config) {
             if(data.config.Internet?.ServiceTiers) window.cachedConfigData.Internet.ServiceTiers = data.config.Internet.ServiceTiers;
             populateInternetTiers(document.getElementById('admin-internet-tier-select'), data.config.Internet?.ServiceTiers);
             populateAdminSelect(powerZoneSelect, data.config.Power?.Zones, 'Select Power Zone');
             populateAdminSelect(document.getElementById('internet-hub-select'), data.config.Internet?.Hubs, 'Select Internet Hub');
         }
 
-        // Server MUST send playerProperties: array of {property_id: 'id', label: 'label', address: 'address' }
-        // This list is used to render cards for each property.
         const playerProperties = data.internet?.playerProperties || [];
         updateUserPropertiesInternetDisplay(playerProperties, window.cachedConfigData.Internet.ServiceTiers);
 
@@ -280,7 +272,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 item.className = 'status-item flex justify-between items-center text-sm';
                 hubsListElement.appendChild(item);
             }
-            // Ensure currentConnections and maxConnections are displayed correctly
             const currentConns = hub.cc ?? hub.currentConnections ?? 0;
             const maxConns = hub.mc ?? hub.maxConnections ?? 'N/A';
             item.innerHTML = `<span><i class="fas fa-network-wired mr-2 ${hub.isDown?'text-gray-500':'text-green-400'}"></i>${hub.label||hubId} (Conn: ${currentConns}/${maxConns})</span><span class="status-indicator ${hub.isDown?'status-offline':'status-online'}"></span>`;
@@ -311,8 +302,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const allServiceTiers = serviceTiersConfig || window.cachedConfigData.Internet.ServiceTiers;
 
             if (currentSub && currentSub.is_active) {
-                const tierConfig = allServiceTiers[currentSub.speed_tier]; // speed_tier is the key from DB
-                const hubIsDown = Internet.HubsState[currentSub.provider] ? Internet.HubsState[currentSub.provider].isDown : false; // Default to not down if hub unknown for some reason
+                const tierConfig = allServiceTiers[currentSub.speed_tier];
+                const hubIsDown = Internet.HubsState[currentSub.provider] ? Internet.HubsState[currentSub.provider].isDown : false;
                 const effectiveServiceActive = !hubIsDown;
                 contentHTML += `<p class="text-sm ${effectiveServiceActive ? 'text-green-400' : 'text-red-400'}"><i class="fas ${effectiveServiceActive ? 'fa-check-circle' : 'fa-exclamation-triangle'} mr-1"></i>Current Plan: <strong>${tierConfig?.label || currentSub.speed_tier}</strong> (${tierConfig?.speed || 'N/A'}) ${!effectiveServiceActive ? '<span class="font-semibold">(Service Interrupted)</span>' : ''}</p>`;
                 if(effectiveServiceActive) contentHTML += `<p class="text-xs text-gray-400">Hub: ${currentSub.provider || 'N/A'} ${hubIsDown ? '<span class="text-red-500 font-bold">(Hub Offline)</span>' : ''}</p>`;
@@ -320,14 +311,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const upgradeSelectId = `upgrade-tier-select-${propertyId}`;
                 contentHTML += `<div class="mt-2"><select id="${upgradeSelectId}" class="bg-gray-800 border border-gray-600 rounded p-2 w-full mb-1 text-sm"><option value="">Select New Tier to Upgrade</option></select><button data-property-id="${propertyId}" data-action="upgrade" class="request-internet-action-btn bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-3 rounded w-full text-sm">Request Upgrade</button></div>`;
             } else if (pendingInstall && pendingInstall.status === 'open') {
-                 // Try to get tier label for pending install from its description or a stored tier_id if available
                  let pendingTierLabel = "Unknown Tier";
-                 if (pendingInstall.speed_tier && allServiceTiers[pendingInstall.speed_tier]) { // Ideal if server stores speed_tier in ticket
-                     pendingTierLabel = allServiceTiers[pendingInstall.speed_tier].label;
-                 } else if (pendingInstall.description) { // Fallback to parsing description
-                     const match = pendingInstall.description.match(/Install (.*?) at/);
-                     if (match && match[1]) pendingTierLabel = match[1];
-                     else pendingTierLabel = pendingInstall.description; // Raw description if no better parse
+                 // Ensure speed_tier is available in pendingInstall object from server for accurate label display.
+                 const pendingSpeedTier = pendingInstall.speed_tier || (pendingInstall.description ? (pendingInstall.description.match(/Install (.*?) at/) || [])[1] : null);
+                 if (pendingSpeedTier && allServiceTiers[pendingSpeedTier]) {
+                     pendingTierLabel = allServiceTiers[pendingSpeedTier].label;
+                 } else if (pendingInstall.description) {
+                     pendingTierLabel = pendingInstall.description.replace('Install ', '').split(' at property:')[0];
                  }
                  contentHTML += `<p class="text-sm text-yellow-400"><i class="fas fa-clock mr-1"></i>Installation Pending for ${pendingTierLabel}</p>`;
             } else {
@@ -345,14 +335,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const tierSelect = document.getElementById(`tier-select-${propertyId}`);
                 if (tierSelect) populateInternetTiers(tierSelect, allServiceTiers);
             }
-            // Add event listeners to newly created buttons
             propDiv.querySelectorAll('.request-internet-action-btn').forEach(btn => btn.addEventListener('click', handleInternetActionClick));
         });
     }
 
     function handleInternetActionClick(event) {
         const propertyId = event.target.dataset.propertyId;
-        const action = event.target.dataset.action; // 'install' or 'upgrade'
+        const action = event.target.dataset.action;
         const tierSelectId = action === 'install' ? `tier-select-${propertyId}` : `upgrade-tier-select-${propertyId}`;
         const tierSelect = document.getElementById(tierSelectId);
         const selectedTier = tierSelect.value;
@@ -368,17 +357,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function updateUserSpecificInternetService(serviceData, propertyId) { // serviceData is the new subscription object or null
+    function updateUserSpecificInternetService(serviceData, propertyId) {
         if (!propertyId && serviceData && serviceData.property_id) propertyId = serviceData.property_id;
         if (!propertyId) { console.warn("updateUserSpecificInternetService missing propertyId.", serviceData); return; }
 
-        // Update local cache
         if (serviceData) {
-            Internet.PlayerSubscriptions[propertyId] = serviceData; // Assumes serviceData is { property_id, citizenid, provider, speed_tier, is_active, last_payment }
-            if (serviceData.is_active && Internet.PendingInstallations[propertyId]) { // If service just became active
-                delete Internet.PendingInstallations[propertyId]; // Remove from pending
+            Internet.PlayerSubscriptions[propertyId] = serviceData;
+            if (serviceData.is_active && Internet.PendingInstallations[propertyId]) {
+                delete Internet.PendingInstallations[propertyId];
             }
-        } else { // serviceData is null, meaning service might have been removed or is not active for other reasons
+        } else {
             delete Internet.PlayerSubscriptions[propertyId];
         }
 
@@ -391,30 +379,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const existingLabel = propDiv.querySelector('h4')?.textContent || propertyId;
         const existingAddress = propDiv.querySelector('p.text-xs.text-gray-400')?.textContent || '';
 
-        // Create a temporary property object to re-render its card
-        // The actual internet status will be picked from the updated Internet.PlayerSubscriptions & Internet.PendingInstallations caches
         const tempPropertyData = {
             property_id: propertyId,
             label: existingLabel,
             address: existingAddress
         };
 
-        // Create a dummy parent, render the single updated card into it, then replace existing
         const tempParent = document.createElement('div');
-        // Temporarily modify servicesListElement for the scope of single card render
-        const originalServicesList = document.getElementById('user-internet-services-list');
-        const tempServicesList = { appendChild: (child) => tempParent.appendChild(child) };
-
+        const tempServicesList = { appendChild: (child) => tempParent.appendChild(child) }; // Mock appendChild for single render
+        // Call updateUserPropertiesInternetDisplay with the single property to get its new HTML structure
         updateUserPropertiesInternetDisplay.call(tempServicesList, [tempPropertyData], window.cachedConfigData.Internet.ServiceTiers);
 
-        const newCardContent = tempParent.querySelector(`#property-${propertyId}`);
-        if (newCardContent) {
-            propDiv.replaceWith(newCardContent.cloneNode(true));
-            // Re-attach listeners to buttons inside the newly replaced card
-            const newCardInDom = document.getElementById(`property-${propertyId}`);
-            if(newCardInDom) {
-                newCardInDom.querySelectorAll('.request-internet-action-btn').forEach(btn => btn.addEventListener('click', handleInternetActionClick));
-            }
+        const newCardRendered = tempParent.querySelector(`#property-${propertyId}`);
+        if (newCardRendered) {
+            propDiv.innerHTML = newCardRendered.innerHTML; // Replace content of existing card
+            // Re-attach listeners to buttons inside the updated card HTML
+            propDiv.querySelectorAll('.request-internet-action-btn').forEach(btn => btn.addEventListener('click', handleInternetActionClick));
         } else {
             console.warn("Failed to re-render single property card for update.", propertyId);
         }
@@ -484,7 +464,6 @@ document.addEventListener('DOMContentLoaded', () => {
             else {
                 const publicBinsList = document.getElementById('public-bins-status-list');
                 const dumpstersList = document.getElementById('large-dumpsters-status-list');
-                // A simple check based on common prefixes; might need adjustment if IDs are less structured
                 if (publicBinsList && (data.id || binId).toLowerCase().startsWith("bin")) publicBinsList.innerHTML += renderTrashBinHTML(fullBinData);
                 else if (dumpstersList && (data.id || binId).toLowerCase().startsWith("dumpster")) dumpstersList.innerHTML += renderTrashBinHTML(fullBinData);
             }
@@ -551,8 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Initial NUI Ready message to server
-    postNuiMessage('NUI_READY'); // Moved here from showTablet to ensure it's sent once on load
+    postNuiMessage('NUI_READY');
     statusBar.textContent = 'Dashboard loaded. Waiting for initial data...';
 
     if (!window.GetParentResourceName) { // Browser Mock
@@ -577,17 +555,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 internet: {
                     hubs: {'LS_Main':{label:"LS Exchange",isDown:false,cc:10,mc:100}, 'Paleto':{label:"Paleto Hub",isDown:true,cc:5,mc:20}},
                     playerProperties: [ {property_id:'prop1', label:'My House', address:'123 Davis Ave'}, {property_id:'prop2', label:'Garage Unit', address:'Unit 5, Industrial Rd'} ],
-                    subscriptions: {'prop1': {property_id:'prop1', citizenid:'test', provider:'LS_Main', speed_tier:'premium', is_active:true, last_payment:Date.now()}}, // Server sends { property_id: subData }
-                    pendingInstallations: {} // Server sends { property_id: ticketData }
+                    subscriptions: {'prop1': {property_id:'prop1', citizenid:'test', provider:'LS_Main', speed_tier:'premium', is_active:true, last_payment:Date.now()}},
+                    pendingInstallations: {}
                 },
                 trash: {public_bins:{'bin1':{id:'bin1',label:'Legion Bin',load:50,capacity:100, coords:{x:0,y:0,z:0}}}, large_dumpsters:{}, illegal_dumps:[]}
             };
-             // Simulate server sending initial data
             window.dispatchEvent(new MessageEvent('message', { data: { type: 'UPDATE_DATA', dataType: 'initial_load', payload: mockInitial } }));
 
-            //Simulate pending install appearing for prop2
             setTimeout(() => {
-                 window.dispatchEvent(new MessageEvent('message', {data: {type: 'UPDATE_DATA', dataType: 'internet_pending_install_update', payload: { property_id: 'prop2', citizenid:'test', description: 'Install Basic ADSL', status:'open', ticket_id: 101, speed_tier: 'basic'} }})); // Added speed_tier to mock
+                 window.dispatchEvent(new MessageEvent('message', {data: {type: 'UPDATE_DATA', dataType: 'internet_pending_install_update', payload: { property_id: 'prop2', citizenid:'test', description: 'Install Basic ADSL', status:'open', ticket_id: 101, speed_tier: 'basic'} }}));
             }, 2000);
         }, 500);
     }
