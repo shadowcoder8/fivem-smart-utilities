@@ -1,0 +1,151 @@
+/* Import Google Fonts for a cleaner look (optional) */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+body {
+    font-family: 'Roboto', sans-serif;
+    /* The overall page background is set to hidden and a semi-transparent dark color via inline style in index.html */
+    /* This ensures that when the tablet is shown, the game behind it is dimmed. */
+}
+
+#tablet-container {
+    /* Ensures the tablet is centered and has some padding from screen edges */
+    /* Tailwind classes 'fixed inset-0 flex items-center justify-center p-4 md:p-8' handle most of this */
+}
+
+/* Custom class for darker gray sections if needed, supplementing Tailwind's bg-gray-700/800 */
+.bg-gray-750 {
+    background-color: #374151; /* A shade between gray-700 and gray-800 */
+}
+
+/* Styling for scrollbars to be less obtrusive */
+main::-webkit-scrollbar {
+    width: 8px;
+}
+
+main::-webkit-scrollbar-track {
+    background: #2d3748; /* gray-800 */
+    border-radius: 10px;
+}
+
+main::-webkit-scrollbar-thumb {
+    background: #4a5568; /* gray-600 */
+    border-radius: 10px;
+}
+
+main::-webkit-scrollbar-thumb:hover {
+    background: #718096; /* gray-500 */
+}
+
+/* Specific card styling, though Tailwind handles most of it */
+section {
+    /* box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); */
+    /* Tailwind 'shadow-lg' or 'shadow-xl' can be used directly on elements */
+    transition: transform 0.2s ease-in-out;
+}
+/* section:hover {
+    transform: translateY(-2px);
+} */
+
+/* Button styling consistency if not fully covered by Tailwind, or for specific non-Tailwind buttons */
+button {
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+/* Input and select styling */
+select, input[type="text"], input[type="number"] {
+    color: #E5E7EB; /* gray-200 */
+}
+select option {
+    background: #2D3748; /* gray-800 */
+    color: #E5E7EB; /* gray-200 */
+}
+
+/* Custom class for status indicators that might be added with JS */
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-online {
+    background-color: #34D399; /* green-400 */
+}
+
+.status-offline {
+    background-color: #F87171; /* red-400 */
+}
+
+.status-warning {
+    background-color: #FBBF24; /* yellow-400 */
+}
+
+/* Styling for list items within status sections */
+.status-item {
+    padding: 6px 0;
+    border-bottom: 1px solid #4B5563; /* gray-600 */
+}
+.status-item:last-child {
+    border-bottom: none;
+}
+
+/* Admin controls visibility (JS will toggle this class) */
+.admin-controls.hidden {
+    display: none;
+}
+
+/* Responsive adjustments if needed beyond Tailwind's capabilities */
+@media (max-width: 768px) { /* Corresponds to md: breakpoint in Tailwind */
+    #tablet-container > div { /* The main white box */
+        min-height: 80vh; /* Take more height on smaller screens */
+    }
+    main {
+        grid-template-columns: 1fr; /* Stack modules vertically on small screens */
+    }
+}
+
+/* Ensure text within buttons is centered and bold */
+button {
+    /* display: inline-flex; */ /* Use if icons and text need specific alignment */
+    /* align-items: center; */
+    /* justify-content: center; */
+    font-weight: 600; /* semibold */
+}
+
+/* Add a little more visual flair to the header */
+header h1 {
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+/* Style for the loading messages */
+.text-gray-400 { /* Tailwind class */
+    font-style: italic;
+}
+
+/* Subtle animation for loading states or dynamic content */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+/* Icon styling if not using FontAwesome classes directly for color/size */
+.fa-bolt { color: #FBBF24; } /* yellow-400 */
+.fa-tint { color: #60A5FA; } /* blue-400 */
+.fa-wifi { color: #34D399; } /* green-400 */
+.fa-recycle { color: #9CA3AF; } /* gray-400 */
+.fa-cogs { color: #9CA3AF; } /* gray-400 */
+.fa-times:hover { color: #EF4444; } /* red-500 */
+
+/* Ensure the hidden class properly hides elements */
+.hidden {
+    display: none !important;
+}
