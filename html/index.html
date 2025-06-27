@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart City Utilities</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Include FontAwesome for icons (optional, but nice for UI) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-gray-100 hidden" style="background-color: rgba(31, 41, 55, 0.85);"> <!-- Initially hidden, shown by JS -->
+
+    <div id="tablet-container" class="fixed inset-0 flex items-center justify-center p-4 md:p-8">
+        <div class="w-full max-w-5xl h-auto max-h-full bg-gray-800 shadow-2xl rounded-lg overflow-hidden flex flex-col" style="min-height: 70vh;">
+            <!-- Header -->
+            <header class="bg-gray-700 p-4 flex justify-between items-center">
+                <h1 class="text-xl font-semibold"><i class="fas fa-cogs mr-2"></i>Smart City Utilities Dashboard</h1>
+                <button id="close-tablet-btn" class="text-gray-300 hover:text-white">
+                    <i class="fas fa-times fa-lg"></i>
+                </button>
+            </header>
+
+            <!-- Main Content Area -->
+            <main class="flex-grow p-2 md:p-4 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <!-- Power Module Section -->
+                <section id="power-module" class="bg-gray-750 p-4 rounded-lg shadow">
+                    <h2 class="text-lg font-semibold mb-3 border-b border-gray-600 pb-2">
+                        <i class="fas fa-bolt mr-2 text-yellow-400"></i>Power Grid Management
+                    </h2>
+                    <div id="power-status-list" class="space-y-2 text-sm">
+                        <!-- Power zones will be listed here by JS -->
+                        <p class="text-gray-400">Loading power grid status...</p>
+                    </div>
+                    <div class="mt-4 admin-controls hidden">
+                        <h3 class="text-md font-semibold mb-2">Admin Controls</h3>
+                        <select id="power-zone-select" class="bg-gray-800 border border-gray-600 rounded p-2 w-full mb-2">
+                            <!-- Options populated by JS -->
+                        </select>
+                        <button id="force-blackout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded w-full mb-1">
+                            Force Blackout
+                        </button>
+                        <button id="repair-power-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded w-full">
+                            Repair Zone
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Water Module Section -->
+                <section id="water-module" class="bg-gray-750 p-4 rounded-lg shadow">
+                    <h2 class="text-lg font-semibold mb-3 border-b border-gray-600 pb-2">
+                        <i class="fas fa-tint mr-2 text-blue-400"></i>Water Supply & Sanitation
+                    </h2>
+                    <div id="water-status-list" class="space-y-2 text-sm">
+                        <!-- Water sources and leaks will be listed here by JS -->
+                        <p class="text-gray-400">Loading water supply status...</p>
+                    </div>
+                     <div class="mt-4 admin-controls hidden">
+                        <h3 class="text-md font-semibold mb-2">Admin Controls</h3>
+                        <button id="force-water-leak-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded w-full mb-1">
+                            Force Water Leak (Random)
+                        </button>
+                        <!-- More admin controls for water can be added here -->
+                    </div>
+                </section>
+
+                <!-- Internet Module Section -->
+                <section id="internet-module" class="bg-gray-750 p-4 rounded-lg shadow">
+                    <h2 class="text-lg font-semibold mb-3 border-b border-gray-600 pb-2">
+                        <i class="fas fa-wifi mr-2 text-green-400"></i>Internet & Connectivity
+                    </h2>
+                    <div id="internet-hubs-status-list" class="space-y-2 text-sm mb-3">
+                        <h3 class="text-md font-semibold mb-1 text-gray-300">Hub Status:</h3>
+                        <!-- Internet hubs status will be listed here by JS -->
+                        <p class="text-gray-400">Loading hub status...</p>
+                    </div>
+                    <hr class="border-gray-600 my-3">
+                    <div id="user-internet-services-list" class="space-y-3 text-sm">
+                        <h3 class="text-md font-semibold mb-1 text-gray-300">My Properties & Services:</h3>
+                        <!-- Player properties and their internet status/options will be listed here by JS -->
+                        <p class="text-gray-400">Loading your properties...</p>
+                    </div>
+                    <!-- Installation request elements (select tier, button) will be dynamically added per property by JS -->
+                    <div class="mt-4 admin-controls hidden">
+                        <h3 class="text-md font-semibold mb-2">Admin Controls</h3>
+                        <select id="internet-hub-select" class="bg-gray-800 border border-gray-600 rounded p-2 w-full mb-2">
+                            <!-- Options populated by JS -->
+                        </select>
+                        <button id="force-internet-outage-btn" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded w-full">
+                            Force Hub Outage
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Trash & Sanitation Module Section -->
+                <section id="trash-module" class="bg-gray-750 p-4 rounded-lg shadow">
+                    <h2 class="text-lg font-semibold mb-3 border-b border-gray-600 pb-2">
+                        <i class="fas fa-recycle mr-2 text-gray-400"></i>Trash & Sanitation Services
+                    </h2>
+                    <div id="trash-status-list" class="space-y-2 text-sm">
+                        <!-- Trash collection status, illegal dumping alerts will be here -->
+                        <p class="text-gray-400">Loading sanitation status...</p>
+                    </div>
+                    <div class="mt-2">
+                         <button id="report-dumping-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded w-full text-sm">
+                            Report Illegal Dumping
+                        </button>
+                    </div>
+                    <div class="mt-4 admin-controls hidden">
+                        <h3 class="text-md font-semibold mb-2">Admin Controls</h3>
+                        <button id="spawn-trash-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded w-full">
+                            Spawn Trash (Admin)
+                        </button>
+                    </div>
+                </section>
+
+            </main>
+
+            <!-- Footer / Notifications Area -->
+            <footer class="bg-gray-700 p-2 text-center text-xs">
+                <p id="status-bar" class="text-gray-400">Smart Utilities System v1.0.0 | Waiting for server connection...</p>
+            </footer>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
