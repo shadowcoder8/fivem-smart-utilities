@@ -288,45 +288,82 @@ end
 -- Function to check if player has required items (client-side or server-side via trigger)
 -- This is a placeholder; you'll need to implement item checking based on your inventory script.
 function HasRequiredItems(source, items)
-    if not items or #items == 0 then return true end -- No items required
-
-    -- Example for QBCore (server-side):
-    if Config.Framework == 'qb-core' and QBCore and QBCore.Functions and QBCore.Player.HasItem then
+    if not source or not items then return false end
+    if type(items) == "table" and #items == 0 then return true end -- No items required
+    
+    -- Convert single item to table format
+    if type(items) == "string" then
+        items = {{name = items, count = 1}}
+    elseif items.name then
+        items = {items}
+    end
+    
+    if Config.Framework == 'qb-core' then
+        local QBCore = exports['qb-core']:GetCoreObject()
         local Player = QBCore.Functions.GetPlayer(source)
         if not Player then return false end
+        
         for _, itemInfo in ipairs(items) do
-            if not Player.Functions.RemoveItem(itemInfo.name, itemInfo.count) then -- Try to remove, if fails, they don't have it
-                Player.Functions.AddInvItem(itemInfo.name, itemInfo.count) -- Add back if check-only, or handle actual removal
-                -- For a pure check without removal: Player.Functions.HasItem(itemInfo.name, itemInfo.count)
-                -- but HasItem might not check quantity correctly or exist in all QB versions.
-                -- A more robust way is to iterate Player.PlayerData.items.
-                local has = false
-                for _, itemSlot in pairs(Player.PlayerData.items) do
-                    if itemSlot and itemSlot.name == itemInfo.name and itemSlot.amount >= itemInfo.count then
-                        has = true
-                        break
+            local itemName = itemInfo.name or itemInfo
+            local itemCount = itemInfo.count or 1
+            
+            -- Check player inventory
+            local hasItem = false
+            local currentAmount = 0
+            
+            if Player.PlayerData.items then
+                for _, item in pairs(Player.PlayerData.items) do
+                    if item and item.name == itemName then
+                        currentAmount = currentAmount + (item.amount or 0)
                     end
                 end
-                if not has then
-                    ShowNotification(source, "You are missing required items: " .. itemInfo.name .. " (x" .. itemInfo.count .. ")", "error")
-                    return false
-                end
+            end
+            
+            if currentAmount >= itemCount then
+                hasItem = true
+            end
+            
+            if not hasItem then
+                ShowNotification(source, "You are missing required items: " .. itemName .. " (x" .. itemCount .. ")", "error")
+                return false
             end
         end
-        return true -- If all items were found/removed
-    elseif Config.Framework == 'esx' then
-        -- ESX item check logic here
-        -- local xPlayer = ESX.GetPlayerFromId(source)
-        -- for _, itemInfo in ipairs(items) do
-        --    if xPlayer.getInventoryItem(itemInfo.name).count < itemInfo.count then
-        --        ShowNotification(source, "You are missing required items: " .. itemInfo.name .. " (x" .. itemInfo.count .. ")", "error")
-        --        return false
-        --    end
-        -- end
         return true
+        
+    elseif Config.Framework == 'esx' then
+        local ESX = exports.esx:getSharedObject()
+        local xPlayer = ESX.GetPlayerFromId(source)
+        if not xPlayer then return false end
+        
+        for _, itemInfo in ipairs(items) do
+            local itemName = itemInfo.name or itemInfo
+            local itemCount = itemInfo.count or 1
+            local item = xPlayer.getInventoryItem(itemName)
+            
+            if not item or item.count < itemCount then
+                ShowNotification(source, "You are missing required items: " .. itemName .. " (x" .. itemCount .. ")", "error")
+                return false
+            end
+        end
+        return true
+        
+    elseif GetResourceState('ox_inventory') == 'started' then
+        -- ox_inventory support
+        for _, itemInfo in ipairs(items) do
+            local itemName = itemInfo.name or itemInfo
+            local itemCount = itemInfo.count or 1
+            local count = exports.ox_inventory:GetItemCount(source, itemName)
+            
+            if count < itemCount then
+                ShowNotification(source, "You are missing required items: " .. itemName .. " (x" .. itemCount .. ")", "error")
+                return false
+            end
+        end
+        return true
+    else
+        Logger.Warn("No supported inventory system found for item checking")
+        return true -- Default to true if no system available
     end
-    print("[SmartUtilities] Warning: Item checking not fully implemented for the current framework or items list.")
-    return true -- Default to true if no inventory logic is present to avoid blocking features
 end
 
 -- Function to remove items (server-side)

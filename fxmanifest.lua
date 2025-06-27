@@ -11,10 +11,14 @@ shared_scripts {
     '@qb-core/shared/locale.lua', -- Common QBCore locale
     'config.lua',
     'config/trash_zones.lua', -- Added
-    'utils/logger.lua'
+    'utils/logger.lua',
+    'utils/validation.lua'
 }
 
 client_scripts {
+    'utils/performance.lua',
+    'utils/minigames.lua',
+    'utils/zone_manager.lua',
     'client.lua',
     'client/internet.lua', -- Added
     'client/trash.lua'     -- Added
@@ -22,9 +26,12 @@ client_scripts {
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
+    'utils/rate_limiter.lua',
+    'utils/inventory.lua',
     'server.lua',
     'server/internet.lua', -- Added
-    'server/trash.lua'     -- Added
+    'server/trash.lua',     -- Added
+    'tests/performance_test.lua' -- Performance testing
 }
 
 ui_page 'html/internet.html' -- Updated to internet.html as the primary UI

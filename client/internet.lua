@@ -111,6 +111,51 @@ RegisterNetEvent("smartutils:client:updateInternetPropertyData", function(proper
     SendNUIMessage("updatePropertyData", propertyData)
 end)
 
+-- Event to handle router status check response
+RegisterNetEvent("smartutils:client:routerStatusResponse", function(propertyId, isInstalled)
+    if isInstalled then
+        QBCore.Functions.Notify("Router is already installed at this property.", "warning")
+        return
+    end
+
+    local playerPed = PlayerPedId()
+    local coords = GetEntityCoords(playerPed)
+    
+    QBCore.Functions.Notify("Starting router installation...", "primary")
+
+    -- Animation and Taskbar
+    RequestAnimDict(INSTALL_ANIM_DICT)
+    while not HasAnimDictLoaded(INSTALL_ANIM_DICT) do Wait(100) end
+
+    TaskPlayAnim(playerPed, INSTALL_ANIM_DICT, INSTALL_ANIM_NAME, 8.0, -8.0, -1, 1, 0, false, false, false)
+
+    local success = exports['qb-taskbar']:taskBar(INSTALL_DURATION, "Installing Router...", false, true, false, false, nil, 5.0, playerPed)
+
+    ClearPedTasks(playerPed)
+    RemoveAnimDict(INSTALL_ANIM_DICT)
+
+    if success then
+        -- Router Placement: Place it slightly in front of the player or at a defined spot if property system provides it.
+        -- For simplicity, placing it in front of where the technician is standing.
+        -- A more robust solution would involve getting property entrance or predefined installation spots.
+        local forwardVector = GetEntityForwardVector(playerPed)
+        local routerCoords = coords + forwardVector * 1.0 + vector3(0.0, 0.0, 0.5) -- Adjust Z height as needed
+
+        RequestModel(ROUTER_PROP)
+        while not HasModelLoaded(ROUTER_PROP) do Wait(100) end
+
+        local routerObject = CreateObject(ROUTER_PROP, routerCoords.x, routerCoords.y, routerCoords.z, true, true, false)
+        PlaceObjectOnGroundProperly(routerObject)
+        FreezeEntityPosition(routerObject, true)
+        SetModelAsNoLongerNeeded(ROUTER_PROP)
+
+        TriggerServerEvent("smartutils:server:confirmInstall", propertyId, routerCoords)
+        QBCore.Functions.Notify("Router installed successfully at property " .. propertyId .. "!", "success")
+    else
+        QBCore.Functions.Notify("Router installation failed or was cancelled.", "error")
+    end
+end)
+
 
 -- /installinternet command
 RegisterCommand("installinternet", function(source, args)
@@ -132,47 +177,8 @@ RegisterCommand("installinternet", function(source, args)
         return
     end
 
-    -- Check if router is already installed for this property (client-side check first, then server)
-    TriggerServerEvent("smartutils:server:checkRouterStatus", propertyId, function(isInstalled)
-        if isInstalled then
-            QBCore.Functions.Notify("Router is already installed at this property.", "warning")
-            return
-        end
-
-        QBCore.Functions.Notify("Starting router installation...", "primary")
-
-        -- Animation and Taskbar
-        RequestAnimDict(INSTALL_ANIM_DICT)
-        while not HasAnimDictLoaded(INSTALL_ANIM_DICT) do Wait(100) end
-
-        TaskPlayAnim(playerPed, INSTALL_ANIM_DICT, INSTALL_ANIM_NAME, 8.0, -8.0, -1, 1, 0, false, false, false)
-
-        local success = exports['qb-taskbar']:taskBar(INSTALL_DURATION, "Installing Router...", false, true, false, false, nil, 5.0, playerPed)
-
-        ClearPedTasks(playerPed)
-        RemoveAnimDict(INSTALL_ANIM_DICT)
-
-        if success then
-            -- Router Placement: Place it slightly in front of the player or at a defined spot if property system provides it.
-            -- For simplicity, placing it in front of where the technician is standing.
-            -- A more robust solution would involve getting property entrance or predefined installation spots.
-            local forwardVector = GetEntityForwardVector(playerPed)
-            local routerCoords = coords + forwardVector * 1.0 + vector3(0.0, 0.0, 0.5) -- Adjust Z height as needed
-
-            RequestModel(ROUTER_PROP)
-            while not HasModelLoaded(ROUTER_PROP) do Wait(100) end
-
-            local routerObject = CreateObject(ROUTER_PROP, routerCoords.x, routerCoords.y, routerCoords.z, true, true, false)
-            PlaceObjectOnGroundProperly(routerObject)
-            FreezeEntityPosition(routerObject, true)
-            SetModelAsNoLongerNeeded(ROUTER_PROP)
-
-            TriggerServerEvent("smartutils:server:confirmInstall", propertyId, routerCoords)
-            QBCore.Functions.Notify("Router installed successfully at property " .. propertyId .. "!", "success")
-        else
-            QBCore.Functions.Notify("Router installation failed or was cancelled.", "error")
-        end
-    end)
+    -- Check if router is already installed for this property (server-side check)
+    TriggerServerEvent("smartutils:server:checkRouterStatus", propertyId)
 end, false)
 
 -- Clean up props on resource stop (basic example)

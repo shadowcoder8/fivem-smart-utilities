@@ -95,8 +95,24 @@ RegisterNetEvent("smartutils:server:subscribeInternet", function(propertyId, tie
     if not Player then return end
     local citizenid = Player.PlayerData.citizenid
 
-    if not propertyId or not tier then
-        Player.Functions.Notify("Missing property ID or tier for subscription.", "error")
+    -- Rate limiting check
+    local canProceed, limitError = RateLimiter.CheckLimit(src, "smartutils:server:subscribeInternet")
+    if not canProceed then
+        Player.Functions.Notify(limitError, "error")
+        Logger.Warn("Rate limit exceeded for player " .. citizenid .. " on subscribeInternet")
+        return
+    end
+
+    -- Validate inputs
+    local isValidProperty, propertyError = Validation.ValidatePropertyId(propertyId)
+    if not isValidProperty then
+        Player.Functions.Notify("Invalid property ID: " .. propertyError, "error")
+        return
+    end
+    
+    local isValidTier, tierError = Validation.ValidateInternetTier(tier)
+    if not isValidTier then
+        Player.Functions.Notify("Invalid tier: " .. tierError, "error")
         return
     end
 
@@ -144,8 +160,24 @@ RegisterNetEvent("smartutils:server:upgradeInternetTier", function(propertyId, n
     if not Player then return end
     local citizenid = Player.PlayerData.citizenid
 
-    if not propertyId or not newTier then
-        Player.Functions.Notify("Missing property ID or new tier for upgrade.", "error")
+    -- Rate limiting check
+    local canProceed, limitError = RateLimiter.CheckLimit(src, "smartutils:server:upgradeInternetTier")
+    if not canProceed then
+        Player.Functions.Notify(limitError, "error")
+        Logger.Warn("Rate limit exceeded for player " .. citizenid .. " on upgradeInternetTier")
+        return
+    end
+
+    -- Validate inputs
+    local isValidProperty, propertyError = Validation.ValidatePropertyId(propertyId)
+    if not isValidProperty then
+        Player.Functions.Notify("Invalid property ID: " .. propertyError, "error")
+        return
+    end
+    
+    local isValidTier, tierError = Validation.ValidateInternetTier(newTier)
+    if not isValidTier then
+        Player.Functions.Notify("Invalid tier: " .. tierError, "error")
         return
     end
 
@@ -177,36 +209,20 @@ RegisterNetEvent("smartutils:server:upgradeInternetTier", function(propertyId, n
 end)
 
 -- Check router status before installation attempt
-RegisterNetEvent("smartutils:server:checkRouterStatus", function(propertyId, cb)
+RegisterNetEvent("smartutils:server:checkRouterStatus", function(propertyId)
     local src = source
     local Player = QBCore.Functions.GetPlayer(src)
-    if not Player then cb(false); return end -- Or handle error
-    local citizenid = Player.PlayerData.citizenid -- Or use property owner's citizenid if different
-
-    -- For installing, we might need to check against the *owner* of the property,
-    -- not necessarily the technician's citizenid, unless techs can install for any active subscription.
-    -- For simplicity, assuming the propertyId is globally unique and we check its status.
-    -- A better check would be: "SELECT is_router_installed FROM player_internet WHERE property_id = ?"
-    -- This requires knowing which player's subscription to check if multiple people could subscribe to the same "propertyId" (e.g. apartment units)
-    -- Let's assume propertyId is unique to a single subscription for now.
-    local result = MySQL.Sync.fetchAll("SELECT is_router_installed, citizenid FROM player_internet WHERE property_id = ? ORDER BY id DESC LIMIT 1", {propertyId})
-
-    if result and result[1] then
-        cb(tonumber(result[1].is_router_installed) == 1)
-    else
-        -- No subscription found for this property, so router definitely not installed
-        cb(false)
-    end
-end)
-
--- Confirm router installation
-RegisterNetEvent("smartutils:server:confirmInstall", function(propertyId, routerCoords)
-    local src = source -- Technician's source
-    local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return end
-
-    -- Server-side validation that the installer is a technician
-    local TECHNICIAN_JOBS_SERVER = { "mechanic", "isp_technician" } -- Keep in sync with client or move to shared config
+    
+    -- Validate input
+    local isValid, errorMsg = Validation.ValidatePropertyId(propertyId)
+    if not isValid then
+        Player.Functions.Notify("Invalid property ID: " .. errorMsg, "error")
+        return
+    end
+    
+    -- Server-side validation that the requester is a technician
+    local TECHNICIAN_JOBS_SERVER = { "mechanic", "isp_technician" }
     local hasPermission = false
     if Player.PlayerData.job and Player.PlayerData.job.name then
         for _, jobName in ipairs(TECHNICIAN_JOBS_SERVER) do
@@ -218,9 +234,61 @@ RegisterNetEvent("smartutils:server:confirmInstall", function(propertyId, router
     end
 
     if not hasPermission then
+        Player.Functions.Notify("You are not authorized to check router status.", "error")
+        Logger.Warn("Player " .. Player.PlayerData.citizenid .. " attempted to check router status without technician job")
+        return
+    end
+
+    local result = Validation.SafeExecute(function()
+        return MySQL.Sync.fetchAll("SELECT is_router_installed, citizenid FROM player_internet WHERE property_id = ? ORDER BY id DESC LIMIT 1", {propertyId})
+    end, "Failed to check router status for property: " .. propertyId)
+
+    local isInstalled = false
+    if result and result[1] then
+        isInstalled = tonumber(result[1].is_router_installed) == 1
+    end
+    
+    TriggerClientEvent("smartutils:client:routerStatusResponse", src, propertyId, isInstalled)
+end)
+
+-- Confirm router installation
+RegisterNetEvent("smartutils:server:confirmInstall", function(propertyId, routerCoords)
+    local src = source -- Technician's source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+
+    -- Rate limiting check
+    local canProceed, limitError = RateLimiter.CheckLimit(src, "smartutils:server:confirmInstall")
+    if not canProceed then
+        Player.Functions.Notify(limitError, "error")
+        Logger.Warn("Rate limit exceeded for player " .. Player.PlayerData.citizenid .. " on confirmInstall")
+        return
+    end
+
+    -- Validate inputs
+    local isValidProperty, propertyError = Validation.ValidatePropertyId(propertyId)
+    if not isValidProperty then
+        Player.Functions.Notify("Invalid property ID: " .. propertyError, "error")
+        return
+    end
+    
+    local isValidCoords, coordsError = Validation.ValidateCoords(routerCoords)
+    if not isValidCoords then
+        Player.Functions.Notify("Invalid coordinates: " .. coordsError, "error")
+        return
+    end
+
+    -- Server-side validation that the installer is a technician
+    local TECHNICIAN_JOBS_SERVER = { "mechanic", "isp_technician" }
+    if not Inventory.HasJob(src, TECHNICIAN_JOBS_SERVER) then
         Player.Functions.Notify("You are not authorized to confirm installations.", "error")
-        -- Potentially log this attempt
-        print(string.format("SECURITY: Player %s (CitizenID: %s) attempted to trigger confirmInstall without technician job.", Player.PlayerData.name, Player.PlayerData.citizenid))
+        Logger.Warn(string.format("SECURITY: Player %s (CitizenID: %s) attempted to trigger confirmInstall without technician job.", Player.PlayerData.name or "Unknown", Player.PlayerData.citizenid))
+        return
+    end
+
+    -- Check if technician has required tools
+    if not Inventory.HasRequiredItems(src, Config.Internet.Installation.RequiredItems or {}) then
+        Player.Functions.Notify("You don't have the required installation tools.", "error")
         return
     end
 

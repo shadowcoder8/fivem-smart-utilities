@@ -37,7 +37,23 @@ RegisterNetEvent("smartutils:server:dumpTrashAtDepot", function(amountCollected)
     local Player = QBCore.Functions.GetPlayer(src)
 
     if not Player then
-        print("smartutils:server:dumpTrashAtDepot - Player not found for source: " .. src)
+        Logger.Error("smartutils:server:dumpTrashAtDepot - Player not found for source: " .. src)
+        return
+    end
+    
+    -- Rate limiting check
+    local canProceed, limitError = RateLimiter.CheckLimit(src, "smartutils:server:dumpTrashAtDepot")
+    if not canProceed then
+        Player.Functions.Notify(limitError, "error")
+        Logger.Warn("Rate limit exceeded for player " .. Player.PlayerData.citizenid .. " on dumpTrashAtDepot")
+        return
+    end
+    
+    -- Validate input
+    local isValid, errorMsg = Validation.ValidateAmount(amountCollected, 1, 1000)
+    if not isValid then
+        Player.Functions.Notify("Invalid trash amount: " .. errorMsg, "error")
+        Logger.Warn("Player " .. Player.PlayerData.citizenid .. " sent invalid trash amount: " .. tostring(amountCollected))
         return
     end
 
@@ -73,7 +89,22 @@ RegisterNetEvent("smartutils:server:illegalDumpTrash", function(amountDumped, du
     local Player = QBCore.Functions.GetPlayer(src)
 
     if not Player then
-        print("smartutils:server:illegalDumpTrash - Player not found for source: " .. src)
+        Logger.Error("smartutils:server:illegalDumpTrash - Player not found for source: " .. src)
+        return
+    end
+    
+    -- Validate inputs
+    local isValidAmount, amountError = Validation.ValidateAmount(amountDumped, 1, 1000)
+    if not isValidAmount then
+        Player.Functions.Notify("Invalid trash amount: " .. amountError, "error")
+        Logger.Warn("Player " .. Player.PlayerData.citizenid .. " sent invalid trash amount: " .. tostring(amountDumped))
+        return
+    end
+    
+    local isValidCoords, coordsError = Validation.ValidateCoords(dumpLocation)
+    if not isValidCoords then
+        Player.Functions.Notify("Invalid dump location: " .. coordsError, "error")
+        Logger.Warn("Player " .. Player.PlayerData.citizenid .. " sent invalid dump coordinates")
         return
     end
 

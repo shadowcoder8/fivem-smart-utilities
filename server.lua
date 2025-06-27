@@ -36,14 +36,73 @@ Citizen.CreateThread(function()
     -- Initialize Database (oxmysql)
     if exports.oxmysql then
         Logger.Info("oxmysql is available.")
-        -- TODO: Create database tables if they don't exist for player_internet_subscriptions etc.
-        -- Internet.CreatePlayerSubscriptionsTable()
+        InitializeDatabase()
     else
         Logger.Error("oxmysql is not available. Database features will be disabled.")
     end
 
     InitializeModules()
 end)
+
+-- Database initialization function
+function InitializeDatabase()
+    Logger.Info("Initializing database tables...")
+    
+    local success, error = Validation.SafeExecute(function()
+        -- Create player_internet table
+        exports.oxmysql:execute([[
+            CREATE TABLE IF NOT EXISTS `player_internet` (
+              `id` INT AUTO_INCREMENT PRIMARY KEY,
+              `citizenid` VARCHAR(50) NOT NULL,
+              `property_id` VARCHAR(50) NOT NULL,
+              `upgrade_tier` VARCHAR(255) DEFAULT 'Basic',
+              `is_router_installed` BOOLEAN DEFAULT FALSE,
+              `router_pos_x` DECIMAL(10, 2) DEFAULT NULL,
+              `router_pos_y` DECIMAL(10, 2) DEFAULT NULL,
+              `router_pos_z` DECIMAL(10, 2) DEFAULT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY `unique_property_subscription` (`citizenid`, `property_id`),
+              INDEX `idx_player_internet_lookup` (`citizenid`, `property_id`),
+              INDEX `idx_player_internet_property` (`property_id`)
+            )
+        ]])
+        
+        -- Create trash_log table
+        exports.oxmysql:execute([[
+            CREATE TABLE IF NOT EXISTS `trash_log` (
+              `id` INT AUTO_INCREMENT PRIMARY KEY,
+              `citizenid` VARCHAR(50) NOT NULL,
+              `time` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `action_type` VARCHAR(50) NOT NULL,
+              `amount_collected` INT DEFAULT 0,
+              `fine_amount` DECIMAL(10, 2) DEFAULT 0.00,
+              `location_x` DECIMAL(10, 2) DEFAULT NULL,
+              `location_y` DECIMAL(10, 2) DEFAULT NULL,
+              `location_z` DECIMAL(10, 2) DEFAULT NULL,
+              INDEX `idx_trash_log_citizenid` (`citizenid`),
+              INDEX `idx_trash_log_time` (`time`),
+              INDEX `idx_trash_log_action` (`action_type`)
+            )
+        ]])
+        
+        -- Create utility_system_state table
+        exports.oxmysql:execute([[
+            CREATE TABLE IF NOT EXISTS `utility_system_state` (
+              `id` INT AUTO_INCREMENT PRIMARY KEY,
+              `system_name` VARCHAR(50) NOT NULL UNIQUE,
+              `state_data` JSON,
+              `last_updated` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        ]])
+        
+        Logger.Info("Database tables initialized successfully")
+    end, "Database initialization failed")
+    
+    if not success then
+        Logger.Error("Failed to initialize database: " .. tostring(error))
+    end
+end
 
 -- Function to initialize all utility modules
 function InitializeModules()
@@ -170,16 +229,42 @@ function Power.ScheduleAutoRepair(zoneId)
     end)
 end
 function Power.ForceBlackout(source, zoneId, durationSeconds)
-    local zoneState = Power.ZonesState[zoneId]
-    if not zoneState then ShowNotification(source, "Error: Power zone '" .. zoneId .. "' not found.", "error") return end
-    Power.SetZoneBlackoutState(zoneId, true, GetPlayerName(source) or "Admin")
-    ShowNotification(source, "Forced blackout for zone: " .. (zoneState.label or zoneId), "success")
-    if durationSeconds and durationSeconds > 0 then
-        if zoneState.autoRepairTimer then KillTimer(zoneState.autoRepairTimer) end
-        zoneState.autoRepairTimer = SetTimeout(durationSeconds * 1000, function()
-            Power.SetZoneBlackoutState(zoneId, false, "TimedAction")
-            zoneState.autoRepairTimer = nil
-        end)
+    local success, error = Validation.SafeExecute(function()
+        -- Validate zone ID
+        local isValid, errorMsg = Validation.ValidateZoneId(zoneId)
+        if not isValid then
+            ShowNotification(source, "Invalid zone ID: " .. errorMsg, "error")
+            return
+        end
+        
+        local zoneState = Power.ZonesState[zoneId]
+        if not zoneState then 
+            ShowNotification(source, "Error: Power zone '" .. zoneId .. "' not found.", "error") 
+            return 
+        end
+        
+        if zoneState.isBlackout then
+            ShowNotification(source, "Zone " .. zoneId .. " is already experiencing a blackout.", "warning")
+            return
+        end
+        
+        Power.SetZoneBlackoutState(zoneId, true, GetPlayerName(source) or "Admin")
+        ShowNotification(source, "Forced blackout for zone: " .. (zoneState.label or zoneId), "success")
+        Logger.Info("Admin " .. (GetPlayerName(source) or "Unknown") .. " forced blackout on zone: " .. zoneId)
+        
+        if durationSeconds and durationSeconds > 0 then
+            if zoneState.autoRepairTimer then ClearTimeout(zoneState.autoRepairTimer) end
+            zoneState.autoRepairTimer = SetTimeout(durationSeconds * 1000, function()
+                Power.SetZoneBlackoutState(zoneId, false, "TimedAction")
+                zoneState.autoRepairTimer = nil
+                Logger.Info("Auto-restored blackout on zone: " .. zoneId)
+            end)
+        end
+    end, "Power.ForceBlackout failed for zone: " .. tostring(zoneId))
+    
+    if not success then
+        ShowNotification(source, "Failed to force blackout: " .. tostring(error), "error")
+        Logger.Error("Power.ForceBlackout error: " .. tostring(error))
     end
 end
 function Power.RepairPowerZone(source, zoneId)
@@ -419,6 +504,21 @@ end
 
 RegisterNetEvent('smartutilities:server:finishInternetHack', function(hubId, success)
     local src = source
+    
+    -- Validate inputs
+    local isValidHub, hubError = Validation.ValidateZoneId(hubId)
+    if not isValidHub then
+        ShowNotification(src, "Invalid hub ID: " .. hubError, "error")
+        Logger.Warn("Player " .. (GetPlayerName(src) or "Unknown") .. " sent invalid hub ID: " .. tostring(hubId))
+        return
+    end
+    
+    if type(success) ~= "boolean" then
+        ShowNotification(src, "Invalid success parameter", "error")
+        Logger.Warn("Player " .. (GetPlayerName(src) or "Unknown") .. " sent invalid success parameter: " .. tostring(success))
+        return
+    end
+    
     local hubState = Internet.HubsState[hubId]
     if not hubState or hubState.isDown or not GetPlayerName(src) then return end
 
@@ -961,6 +1061,51 @@ Citizen.CreateThread(function()
     RegisterNetEvent('smartutilities:server:collectPublicTrashBin', function(binId)
         Trash.CollectFromPublicBin(source, binId)
     end)
+    
+    -- Admin test command
+    RegisterCommand('smartutils', function(source, args, rawCommand)
+        if not IsAdmin(source, {'admin', 'god'}) then
+            ShowNotification(source, "You don't have permission to use this command.", "error")
+            return
+        end
+        
+        local action = args[1]
+        if not action then
+            ShowNotification(source, "Usage: /smartutils [test|status|cleanup]", "info")
+            return
+        end
+        
+        if action == "test" then
+            -- Run performance tests
+            TriggerClientEvent('smartutilities:client:runTests', source)
+            ShowNotification(source, "Running performance tests...", "info")
+            
+        elseif action == "status" then
+            -- Show system status
+            local status = {
+                power_zones = 0,
+                water_leaks = 0,
+                internet_subs = 0,
+                active_particles = 0
+            }
+            
+            for _ in pairs(Power.ZonesState or {}) do status.power_zones = status.power_zones + 1 end
+            for _ in pairs(Water.ActiveLeaks or {}) do status.water_leaks = status.water_leaks + 1 end
+            
+            ShowNotification(source, string.format(
+                "System Status:\nPower Zones: %d\nActive Leaks: %d\nInternet Subs: %d",
+                status.power_zones, status.water_leaks, status.internet_subs
+            ), "info", 10000)
+            
+        elseif action == "cleanup" then
+            -- Force cleanup
+            TriggerClientEvent('smartutilities:client:forceCleanup', -1)
+            ShowNotification(source, "Forced system cleanup completed.", "success")
+            
+        else
+            ShowNotification(source, "Unknown action. Use: test, status, or cleanup", "error")
+        end
+    end, false)
 end)
 
 Logger.Info("SmartUtilities Server Script Loaded. Waiting for framework and DB initialization.")
@@ -968,12 +1113,42 @@ Logger.Info("SmartUtilities Server Script Loaded. Waiting for framework and DB i
 AddEventHandler('onResourceStop', function(resourceName)
     if GetCurrentResourceName() == resourceName then
         Logger.Info("SmartUtilities resource stopping. Performing cleanup and saving data...")
-        for zoneId, _ in pairs(Power.ZonesState or {}) do Power.SaveZoneStateToDB(zoneId) end
-        -- for sourceId, _ in pairs(Water.SourcesState or {}) do Water.SaveSourceStateToDB(sourceId) end
-        for hubId, _ in pairs(Internet.HubsState or {}) do
-            -- Internet.SaveHubStateToDB(hubId) -- Placeholder for saving hub operational state
+        
+        -- Clean up power system timers
+        for zoneId, zoneState in pairs(Power.ZonesState or {}) do 
+            if zoneState.autoRepairTimer then
+                ClearTimeout(zoneState.autoRepairTimer)
+                zoneState.autoRepairTimer = nil
+            end
+            Power.SaveZoneStateToDB(zoneId) 
         end
-        -- No need to explicitly save all subscriptions here if they are saved on change.
-        Logger.Info("Cleanup complete (actual data saving for hubs/sources/etc. is mostly placeholder). Goodbye!")
+        
+        -- Clean up water system timers
+        for sourceId, sourceState in pairs(Water.SourcesState or {}) do
+            if sourceState.leakTimer then
+                ClearTimeout(sourceState.leakTimer)
+                sourceState.leakTimer = nil
+            end
+            if sourceState.repairTimer then
+                ClearTimeout(sourceState.repairTimer)
+                sourceState.repairTimer = nil
+            end
+        end
+        
+        -- Clean up internet system timers
+        for hubId, hubState in pairs(Internet.HubsState or {}) do
+            if hubState.maintenanceTimer then
+                ClearTimeout(hubState.maintenanceTimer)
+                hubState.maintenanceTimer = nil
+            end
+        end
+        
+        -- Clean up any global timers
+        if Power.GlobalMaintenanceTimer then
+            ClearTimeout(Power.GlobalMaintenanceTimer)
+            Power.GlobalMaintenanceTimer = nil
+        end
+        
+        Logger.Info("SmartUtilities cleanup completed successfully!")
     end
 end)

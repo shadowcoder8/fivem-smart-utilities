@@ -146,7 +146,7 @@ end)
 -- Handle ESC key to close tablet
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(0)
+        Citizen.Wait(100) -- Reduced frequency for better performance
         if TabletOpen and IsControlJustReleased(0, 322) and Config.Tablet.CloseOnEscape then -- 322 is ESC key for Windows, might need adjustment for Linux
             CloseTablet()
         end
@@ -252,14 +252,24 @@ function ProcessStreetLights(zoneId, isBlackout, zoneCoords, zoneRadius)
     end
 end
 
--- TODO: Client-side logic for sabotage minigame if implemented
--- RegisterNetEvent('smartutilities:client:startPowerSabotageMinigame')
--- AddEventHandler('smartutilities:client:startPowerSabotageMinigame', function(zoneId, difficulty)
---    Logger.Debug("Received request to start power sabotage minigame for zone: " .. zoneId .. " with difficulty: " .. difficulty)
---    -- Trigger your minigame UI/logic here
---    -- Example: local success = exports['some-minigame-resource']:StartHackingMinigame(difficulty)
---    -- TriggerServerEvent('smartutilities:server:finishPowerSabotageMinigame', zoneId, success)
--- end)
+-- Power sabotage minigame implementation
+RegisterNetEvent('smartutilities:client:startPowerSabotageMinigame')
+AddEventHandler('smartutilities:client:startPowerSabotageMinigame', function(zoneId, difficulty)
+    Logger.Debug("Starting power sabotage minigame for zone: " .. zoneId .. " difficulty: " .. difficulty)
+    QBCore.Functions.Notify("Initiating power grid sabotage...", "primary")
+    
+    Minigames.GetMinigameForAction("repair_electrical", difficulty or 3, function(success)
+        if success then
+            QBCore.Functions.Notify("Power grid successfully compromised!", "success")
+            Logger.Info("Player successfully sabotaged power zone: " .. zoneId)
+        else
+            QBCore.Functions.Notify("Sabotage failed! Security systems detected the intrusion.", "error")
+            Logger.Info("Player failed power sabotage on zone: " .. zoneId)
+        end
+        
+        TriggerServerEvent('smartutilities:server:finishPowerSabotageMinigame', zoneId, success)
+    end)
+end)
 
 
 -- Water Module Client Logic
@@ -301,6 +311,11 @@ AddEventHandler('smartutilities:client:waterLeakEffect', function(leakId, coords
                         false, false, false, false -- x,y,z axis, unknown1, unknown2
                     )
                     activeLeakParticles[leakId] = particleHandle
+                    particleData[leakId] = {
+                        handle = particleHandle,
+                        coords = vec3(x, y, z),
+                        lastCheck = GetGameTimer()
+                    }
                     Logger.Debug("Started puddle particle effect for leak: " .. leakId .. " Handle: " .. particleHandle)
                 else
                     Logger.Debug("Player too far from leak " .. leakId .. " to spawn particle effect.")
@@ -318,38 +333,90 @@ AddEventHandler('smartutilities:client:waterLeakEffect', function(leakId, coords
             end
             RemoveParticleFx(particleHandle, false) -- Ensure it's fully removed
             activeLeakParticles[leakId] = nil
+            particleData[leakId] = nil -- Clean up stored data
             Logger.Debug("Stopped puddle particle effect for leak: " .. leakId .. " Handle: " .. particleHandle)
         end
     end
 end)
 
+-- Store particle data with coordinates for cleanup
+local particleData = {} -- { [leakId] = { handle = handle, coords = coords, lastCheck = time } }
+
 -- Clean up particles if player moves too far away from them (optimization)
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(10000) -- Check every 10 seconds
-        if next(activeLeakParticles) == nil then Citizen.Wait(20000) end -- If no particles, check less often
+        Citizen.Wait(15000) -- Check every 15 seconds
+        if next(activeLeakParticles) == nil then 
+            Citizen.Wait(30000) -- If no particles, check much less often
+            goto continue
+        end
 
         local playerPed = PlayerPedId()
         local playerCoords = GetEntityCoords(playerPed)
+        local currentTime = GetGameTimer()
 
         for leakId, particleHandle in pairs(activeLeakParticles) do
-            if DoesParticleFxLoopedExist(particleHandle) then
-                local particleCoords = GetParticleFxLoopedCoords(particleHandle) -- This native doesn't exist. We need original coords.
-                -- We need to store original coords with particleHandle or get them from Water.ActiveLeaks (if client has this table)
-                -- For now, this check cannot be accurately performed without original leak coords.
-                -- Let's assume if a leak is removed by the server, the event 'smartutilities:client:waterLeakEffect' with isLeaking = false handles it.
-                -- This loop is more for particles that might have been missed or are far away.
+            local data = particleData[leakId]
+            if data then
+                -- Check if player is too far from particle (cleanup for performance)
+                local distance = #(playerCoords - data.coords)
+                if distance > 500.0 then -- 500 units away, clean up particle
+                    if DoesParticleFxLoopedExist(particleHandle) then
+                        StopParticleFxLooped(particleHandle, false)
+                        RemoveParticleFx(particleHandle, false)
+                    end
+                    activeLeakParticles[leakId] = nil
+                    particleData[leakId] = nil
+                    Logger.Debug("Cleaned up distant particle for leak " .. leakId)
+                end
             else
-                -- Particle doesn't exist, remove from our tracking
-                activeLeakParticles[leakId] = nil
-                Logger.Debug("Particle for leak " .. leakId .. " no longer exists, removed from tracking.")
+                -- No data stored, check if particle still exists
+                if not DoesParticleFxLoopedExist(particleHandle) then
+                    activeLeakParticles[leakId] = nil
+                    Logger.Debug("Particle for leak " .. leakId .. " no longer exists, removed from tracking.")
+                end
             end
         end
+        
+        ::continue::
     end
 end)
 
--- TODO: Client-side logic for water meter installation (e.g., minigame, interaction prompts)
--- TODO: Client-side logic for water theft (e.g., minigame, item usage)
+-- Water repair minigame implementation
+RegisterNetEvent('smartutilities:client:startWaterRepairMinigame')
+AddEventHandler('smartutilities:client:startWaterRepairMinigame', function(leakId, difficulty)
+    Logger.Debug("Starting water repair minigame for leak: " .. leakId .. " difficulty: " .. difficulty)
+    QBCore.Functions.Notify("Beginning water leak repair...", "primary")
+    
+    Minigames.GetMinigameForAction("repair_mechanical", difficulty or 2, function(success)
+        if success then
+            QBCore.Functions.Notify("Water leak successfully repaired!", "success")
+            Logger.Info("Player successfully repaired water leak: " .. leakId)
+        else
+            QBCore.Functions.Notify("Repair failed! The leak is still active.", "error")
+            Logger.Info("Player failed to repair water leak: " .. leakId)
+        end
+        
+        TriggerServerEvent('smartutilities:server:finishWaterRepair', leakId, success)
+    end)
+end)
+
+-- Water meter installation minigame
+RegisterNetEvent('smartutilities:client:startWaterMeterInstall')
+AddEventHandler('smartutilities:client:startWaterMeterInstall', function(sourceId, difficulty)
+    Logger.Debug("Starting water meter installation for source: " .. sourceId)
+    QBCore.Functions.Notify("Installing water monitoring equipment...", "primary")
+    
+    Minigames.GetMinigameForAction("memory", difficulty or 3, function(success)
+        if success then
+            QBCore.Functions.Notify("Water meter installed successfully!", "success")
+        else
+            QBCore.Functions.Notify("Installation failed! Equipment may be damaged.", "error")
+        end
+        
+        TriggerServerEvent('smartutilities:server:finishWaterMeterInstall', sourceId, success)
+    end)
+end)
 
 
 -- Internet Module Client Logic
@@ -391,13 +458,25 @@ end
 exports('DoesPlayerHaveInternet', DoesPlayerHaveInternet)
 
 
--- TODO: Client-side logic for internet hacking minigame
--- RegisterNetEvent('smartutilities:client:startInternetHackMinigame')
--- AddEventHandler('smartutilities:client:startInternetHackMinigame', function(hubId, difficulty)
---    Logger.Debug("Start internet hack minigame for hub: " .. hubId .. " difficulty: " .. difficulty)
---    -- local success = TriggerMinigame(difficulty)
---    -- TriggerServerEvent('smartutilities:server:finishInternetHackMinigame', hubId, success)
--- end)
+-- Internet hacking minigame implementation
+RegisterNetEvent('smartutilities:client:startInternetHackMinigame')
+AddEventHandler('smartutilities:client:startInternetHackMinigame', function(hubId, difficulty)
+    Logger.Debug("Starting internet hack minigame for hub: " .. hubId .. " difficulty: " .. difficulty)
+    QBCore.Functions.Notify("Initiating hack on hub: " .. hubId, "primary")
+    
+    -- Start the hacking minigame
+    Minigames.HackingGame(difficulty or 3, function(success)
+        if success then
+            QBCore.Functions.Notify("Hack successful! Hub compromised.", "success")
+            Logger.Info("Player successfully hacked hub: " .. hubId)
+        else
+            QBCore.Functions.Notify("Hack failed! Security detected the intrusion.", "error")
+            Logger.Info("Player failed to hack hub: " .. hubId)
+        end
+        
+        TriggerServerEvent('smartutilities:server:finishInternetHack', hubId, success)
+    end)
+end)
 
 -- TODO: Client-side logic for internet installation (technician job)
 -- This would involve UI prompts, targeting, and potentially a minigame for the technician.
@@ -525,6 +604,74 @@ Logger.Info("SmartUtilities Client Script Loaded.")
 --         })
 --     end
 -- end)
+
+-- Clean up on resource stop
+AddEventHandler('onResourceStop', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then return end
+    
+    Logger.Info("Cleaning up SmartUtilities client resources...")
+    
+    -- Clean up all active particles
+    for leakId, particleHandle in pairs(activeLeakParticles) do
+        if DoesParticleFxLoopedExist(particleHandle) then
+            StopParticleFxLooped(particleHandle, false)
+            RemoveParticleFx(particleHandle, false)
+        end
+    end
+    activeLeakParticles = {}
+    particleData = {}
+    
+    -- Close any open NUI
+    if TabletOpen then
+        SetNuiFocus(false, false)
+        SendNUIMessage({ action = "closeTablet" })
+        TabletOpen = false
+    end
+    
+    Logger.Info("SmartUtilities client cleanup completed")
+end)
+
+-- Admin test event handlers
+RegisterNetEvent('smartutilities:client:runTests')
+AddEventHandler('smartutilities:client:runTests', function()
+    QBCore.Functions.Notify("Running client-side performance tests...", "info")
+    
+    -- Test zone manager
+    local testZone = {
+        coords = GetEntityCoords(PlayerPedId()),
+        radius = 50.0,
+        type = "test",
+        onEnter = function() 
+            QBCore.Functions.Notify("Test zone entered", "success") 
+        end,
+        onExit = function() 
+            QBCore.Functions.Notify("Test zone exited", "info") 
+        end
+    }
+    
+    ZoneManager.RegisterZone("test_zone", testZone)
+    
+    Citizen.Wait(2000)
+    ZoneManager.UnregisterZone("test_zone")
+    
+    QBCore.Functions.Notify("Client tests completed", "success")
+end)
+
+RegisterNetEvent('smartutilities:client:forceCleanup')
+AddEventHandler('smartutilities:client:forceCleanup', function()
+    -- Force cleanup of all client resources
+    for leakId, particleHandle in pairs(activeLeakParticles) do
+        if DoesParticleFxLoopedExist(particleHandle) then
+            StopParticleFxLooped(particleHandle, false)
+            RemoveParticleFx(particleHandle, false)
+        end
+    end
+    activeLeakParticles = {}
+    particleData = {}
+    
+    Performance.CleanupCache()
+    QBCore.Functions.Notify("Client cleanup completed", "success")
+end)
 
 -- Ensure config is loaded before anything major happens
 Citizen.CreateThread(function()

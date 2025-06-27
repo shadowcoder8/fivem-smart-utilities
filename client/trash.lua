@@ -8,6 +8,12 @@ local nearbyBin = nil -- Stores the reference to the closest interactive bin/dum
 local isNearDepotDropOff = false
 local isNearJobStart = false
 
+-- Performance optimization variables
+local lastPlayerPos = vector3(0, 0, 0)
+local lastZoneCheck = 0
+local ZONE_CHECK_INTERVAL = 1000 -- Check zones every 1 second
+local MOVEMENT_THRESHOLD = 5.0 -- Only check zones if player moved more than 5 units
+
 local function DrawText3D(coords, text)
     SetTextScale(0.35, 0.35)
     SetTextFont(4)
@@ -56,73 +62,78 @@ Citizen.CreateThread(function()
     local allCollectionZones = GetCombinedTrashZones()
 
     while true do
-        Citizen.Wait(500) -- Main loop, less frequent checks
+        local currentTime = GetGameTimer()
         local playerPed = PlayerPedId()
         local playerCoords = GetEntityCoords(playerPed)
-        local foundNearbyBin = false
-        local foundNearDepot = false
-        local foundNearJobStart = false
+        local playerMoved = #(playerCoords - lastPlayerPos) > MOVEMENT_THRESHOLD
+        
+        -- Only check zones if player moved or enough time has passed
+        local shouldCheckZones = playerMoved or (currentTime - lastZoneCheck) > ZONE_CHECK_INTERVAL
+        
+        if shouldCheckZones then
+            lastPlayerPos = playerCoords
+            lastZoneCheck = currentTime
+            
+            local foundNearbyBin = false
+            local foundNearDepot = false
+            local foundNearJobStart = false
 
-        -- Check near collection zones (bins/dumpsters)
-        for _, zoneEntry in ipairs(allCollectionZones) do
-            local zone = zoneEntry.data
-            local dist = #(playerCoords - zone.coords)
-            if dist < zone.radius + 2.0 then -- A bit larger radius for initial detection
-                if Config.TrashZones.EnableDebug then
-                    DrawMarker(1, zone.coords.x, zone.coords.y, zone.coords.z - 0.9, 0, 0, 0, 0, 0, 0, zone.radius * 2, zone.radius * 2, 0.5, 0, 255, 0, 50, false, true, 2, nil, nil, false)
-                end
-                if dist < zone.radius then
-                    nearbyBin = zone
-                    foundNearbyBin = true
-                    -- More frequent checks when inside an interaction radius
-                    Citizen.Wait(0) -- Process faster when potentially interacting
-                    break -- Found the closest, no need to check others for now
+            -- Check near collection zones (bins/dumpsters)
+            for _, zoneEntry in ipairs(allCollectionZones) do
+                local zone = zoneEntry.data
+                local dist = #(playerCoords - zone.coords)
+                if dist < zone.radius + 2.0 then -- A bit larger radius for initial detection
+                    if Config.TrashZones.EnableDebug then
+                        DrawMarker(1, zone.coords.x, zone.coords.y, zone.coords.z - 0.9, 0, 0, 0, 0, 0, 0, zone.radius * 2, zone.radius * 2, 0.5, 0, 255, 0, 50, false, true, 2, nil, nil, false)
+                    end
+                    if dist < zone.radius then
+                        nearbyBin = zone
+                        foundNearbyBin = true
+                        break -- Found the closest, no need to check others for now
+                    end
                 end
             end
-        end
-        if not foundNearbyBin then
-            nearbyBin = nil
-        end
+            if not foundNearbyBin then
+                nearbyBin = nil
+            end
 
-        -- Check near depot drop-off
-        local depot = Config.TrashZones.Depot
-        if depot and depot.dropOffCoords then
-            local distToDepotDropOff = #(playerCoords - depot.dropOffCoords)
-            if distToDepotDropOff < depot.dropOffRadius + 5.0 then -- Larger for debug
-                 if Config.TrashZones.EnableDebug then
-                    DrawMarker(1, depot.dropOffCoords.x, depot.dropOffCoords.y, depot.dropOffCoords.z - 0.9, 0, 0, 0, 0, 0, 0, depot.dropOffRadius * 2, depot.dropOffRadius * 2, 1.0, 255, 255, 0, 50, false, true, 2, nil, nil, false)
-                end
-                if distToDepotDropOff < depot.dropOffRadius then
-                    isNearDepotDropOff = true
-                    foundNearDepot = true
-                    Citizen.Wait(0)
+            -- Check near depot drop-off
+            local depot = Config.TrashZones.Depot
+            if depot and depot.dropOffCoords then
+                local distToDepotDropOff = #(playerCoords - depot.dropOffCoords)
+                if distToDepotDropOff < depot.dropOffRadius + 5.0 then -- Larger for debug
+                     if Config.TrashZones.EnableDebug then
+                        DrawMarker(1, depot.dropOffCoords.x, depot.dropOffCoords.y, depot.dropOffCoords.z - 0.9, 0, 0, 0, 0, 0, 0, depot.dropOffRadius * 2, depot.dropOffRadius * 2, 1.0, 255, 255, 0, 50, false, true, 2, nil, nil, false)
+                    end
+                    if distToDepotDropOff < depot.dropOffRadius then
+                        isNearDepotDropOff = true
+                        foundNearDepot = true
+                    end
                 end
             end
-        end
-        if not foundNearDepot then
-            isNearDepotDropOff = false
-        end
+            if not foundNearDepot then
+                isNearDepotDropOff = false
+            end
 
-        -- Check near job start point
-        if depot and depot.startJobCoords then
-             local distToJobStart = #(playerCoords - depot.startJobCoords)
-             if distToJobStart < depot.startJobRadius + 2.0 then
-                if Config.TrashZones.EnableDebug then
-                    DrawMarker(1, depot.startJobCoords.x, depot.startJobCoords.y, depot.startJobCoords.z - 0.9, 0, 0, 0, 0, 0, 0, depot.startJobRadius * 2, depot.startJobRadius * 2, 1.0, 0, 0, 255, 50, false, true, 2, nil, nil, false)
-                end
-                if distToJobStart < depot.startJobRadius then
-                    isNearJobStart = true
-                    foundNearJobStart = true
-                    Citizen.Wait(0)
+            -- Check near job start point
+            if depot and depot.startJobCoords then
+                 local distToJobStart = #(playerCoords - depot.startJobCoords)
+                 if distToJobStart < depot.startJobRadius + 2.0 then
+                    if Config.TrashZones.EnableDebug then
+                        DrawMarker(1, depot.startJobCoords.x, depot.startJobCoords.y, depot.startJobCoords.z - 0.9, 0, 0, 0, 0, 0, 0, depot.startJobRadius * 2, depot.startJobRadius * 2, 1.0, 0, 0, 255, 50, false, true, 2, nil, nil, false)
+                    end
+                    if distToJobStart < depot.startJobRadius then
+                        isNearJobStart = true
+                        foundNearJobStart = true
+                    end
                 end
             end
-        end
-        if not foundNearJobStart then
-            isNearJobStart = false
+            if not foundNearJobStart then
+                isNearJobStart = false
+            end
         end
 
-
-        -- UI Prompts (simple version)
+        -- UI Prompts (simple version) - Always show if near something
         if nearbyBin and (nearbyBin.currentLoad or 0) < nearbyBin.capacity then
             DrawText3D(nearbyBin.coords + vector3(0,0,1.0), "[E] Collect Trash (" .. (nearbyBin.currentLoad or 0) .. "/" .. nearbyBin.capacity .. " units)")
         elseif nearbyBin and (nearbyBin.currentLoad or 0) >= nearbyBin.capacity then
@@ -130,12 +141,15 @@ Citizen.CreateThread(function()
         end
 
         if isNearDepotDropOff and currentTrashLoad > 0 then
+            local depot = Config.TrashZones.Depot
             DrawText3D(depot.dropOffCoords + vector3(0,0,1.5), "[G] Dump Trash (" .. currentTrashLoad .. " units)")
         elseif isNearDepotDropOff and currentTrashLoad == 0 then
+            local depot = Config.TrashZones.Depot
              DrawText3D(depot.dropOffCoords + vector3(0,0,1.5), "Trash Depot - Nothing to dump.")
         end
 
         if isNearJobStart then
+            local depot = Config.TrashZones.Depot
             -- Placeholder for job interaction, e.g., start/end trash collector job
             DrawText3D(depot.startJobCoords + vector3(0,0,1.0), "[H] Sanitation Job Services")
         end
@@ -150,9 +164,11 @@ Citizen.CreateThread(function()
             DrawText(0.9, 0.8) -- Position on screen (bottom right-ish)
         end
 
-        -- If no specific interaction is happening, wait a bit longer
-        if not foundNearbyBin and not foundNearDepot and not foundNearJobStart then
-            Citizen.Wait(1000)
+        -- Dynamic wait based on activity
+        if nearbyBin or isNearDepotDropOff or isNearJobStart then
+            Citizen.Wait(100) -- Fast updates when near interaction points
+        else
+            Citizen.Wait(1000) -- Slower updates when not near anything
         end
     end
 end)
@@ -160,7 +176,12 @@ end)
 -- Interaction logic
 Citizen.CreateThread(function()
     while true do
-        Citizen.Wait(0) -- Check every frame for key presses if near an interaction point
+        -- Only check for key presses frequently if near an interaction point
+        if nearbyBin or isNearDepotDropOff or isNearJobStart then
+            Citizen.Wait(0) -- Check every frame for key presses when near interaction points
+        else
+            Citizen.Wait(200) -- Much less frequent when not near anything
+        end
 
         if nearbyBin and IsControlJustPressed(0, 38) then -- Key E
             if (nearbyBin.currentLoad or 0) < nearbyBin.capacity then
