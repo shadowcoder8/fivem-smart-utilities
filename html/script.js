@@ -312,7 +312,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 contentHTML += `<div class="mt-2"><select id="${upgradeSelectId}" class="bg-gray-800 border border-gray-600 rounded p-2 w-full mb-1 text-sm"><option value="">Select New Tier to Upgrade</option></select><button data-property-id="${propertyId}" data-action="upgrade" class="request-internet-action-btn bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-3 rounded w-full text-sm">Request Upgrade</button></div>`;
             } else if (pendingInstall && pendingInstall.status === 'open') {
                  let pendingTierLabel = "Unknown Tier";
-                 // Ensure speed_tier is available in pendingInstall object from server for accurate label display.
                  const pendingSpeedTier = pendingInstall.speed_tier || (pendingInstall.description ? (pendingInstall.description.match(/Install (.*?) at/) || [])[1] : null);
                  if (pendingSpeedTier && allServiceTiers[pendingSpeedTier]) {
                      pendingTierLabel = allServiceTiers[pendingSpeedTier].label;
@@ -386,15 +385,16 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const tempParent = document.createElement('div');
-        const tempServicesList = { appendChild: (child) => tempParent.appendChild(child) }; // Mock appendChild for single render
-        // Call updateUserPropertiesInternetDisplay with the single property to get its new HTML structure
+        const tempServicesList = { appendChild: (child) => tempParent.appendChild(child) };
         updateUserPropertiesInternetDisplay.call(tempServicesList, [tempPropertyData], window.cachedConfigData.Internet.ServiceTiers);
 
         const newCardRendered = tempParent.querySelector(`#property-${propertyId}`);
         if (newCardRendered) {
-            propDiv.innerHTML = newCardRendered.innerHTML; // Replace content of existing card
-            // Re-attach listeners to buttons inside the updated card HTML
-            propDiv.querySelectorAll('.request-internet-action-btn').forEach(btn => btn.addEventListener('click', handleInternetActionClick));
+            propDiv.innerHTML = newCardRendered.innerHTML;
+            const newCardInDom = document.getElementById(`property-${propertyId}`);
+            if(newCardInDom) {
+                newCardInDom.querySelectorAll('.request-internet-action-btn').forEach(btn => btn.addEventListener('click', handleInternetActionClick));
+            }
         } else {
             console.warn("Failed to re-render single property card for update.", propertyId);
         }
