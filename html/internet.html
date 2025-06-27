@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Internet Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="internet.css">
+</head>
+<body class="bg-gray-900 text-white hidden">
+
+    <div id="internet-dashboard" class="container mx-auto mt-10 p-6 bg-gray-800 rounded-lg shadow-xl max-w-2xl">
+        <button id="close-btn" class="absolute top-2 right-2 text-red-500 hover:text-red-700 text-2xl font-bold">&times;</button>
+        <h1 class="text-3xl font-bold mb-6 text-center text-blue-400">Internet Service Management</h1>
+
+        <div id="loading" class="text-center py-4">Loading your properties...</div>
+
+        <div id="properties-list" class="space-y-4">
+            <!-- Property items will be injected here by JS -->
+        </div>
+
+        <!-- Property Template -->
+        <template id="property-template">
+            <div class="property-item bg-gray-700 p-4 rounded-md shadow">
+                <h2 class="text-xl font-semibold mb-2 property-address">Property Address Placeholder</h2>
+                <p class="mb-1">Status: <span class="property-status font-medium">Unknown</span></p>
+                <p class="mb-1">Current Tier: <span class="property-tier font-medium">None</span></p>
+
+                <div class="mt-4 actions">
+                    <!-- Actions like subscribe, upgrade, install will be here -->
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <script src="internet.js"></script>
+</body>
+</html>

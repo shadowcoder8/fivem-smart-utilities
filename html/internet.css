@@ -1,0 +1,64 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Basic styling for the container if needed beyond Tailwind */
+#internet-dashboard {
+    /* Example: Additional shadow or border if desired */
+    /* box-shadow: 0 0 15px rgba(0, 0, 0, 0.5); */
+}
+
+.property-item {
+    transition: transform 0.2s ease-in-out;
+}
+
+.property-item:hover {
+    transform: translateY(-2px);
+}
+
+/* Ensure the NUI is hidden by default */
+body.hidden {
+    display: none;
+}
+
+/* Styles for buttons and select elements for a consistent feel */
+.btn {
+    @apply py-2 px-4 rounded-md font-semibold transition-colors duration-150;
+}
+
+.btn-primary {
+    @apply bg-blue-500 hover:bg-blue-600 text-white;
+}
+
+.btn-secondary {
+    @apply bg-gray-500 hover:bg-gray-600 text-white;
+}
+
+.btn-success {
+    @apply bg-green-500 hover:bg-green-600 text-white;
+}
+
+.btn-danger {
+    @apply bg-red-500 hover:bg-red-600 text-white;
+}
+
+.select-input {
+    @apply block w-full mt-1 p-2 bg-gray-600 border border-gray-500 rounded-md shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 text-white;
+}
+
+/* Loading spinner (optional, simple text for now) */
+#loading {
+    /* If you want a visual spinner, you'd add CSS for it here */
+}
+
+/* Responsive adjustments if needed */
+@media (max-width: 768px) {
+    #internet-dashboard {
+        margin-top: 2rem;
+        padding: 1rem;
+    }
+
+    h1 {
+        font-size: 1.8rem; /* Adjusted for smaller screens */
+    }
+}
